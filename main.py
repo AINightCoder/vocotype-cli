@@ -85,6 +85,12 @@ def main() -> None:
         from app.cli.sendto_cmd import uninstall
         sys.exit(uninstall(args))
 
+    # 进入 daemon 模式：首次启动时静默自动注册 Send To 菜单（仅冻结 exe，
+    # 已装或用户 opt-out 则跳过）。这条 trigger 限定在 daemon 路径——
+    # transcribe 子命令是一次性 CLI 调用，不动用户 shell 环境。
+    from app.cli.sendto_cmd import maybe_auto_install
+    maybe_auto_install()
+
     config = load_config(args.config)
     
     # 配置日志系统（统一配置）
