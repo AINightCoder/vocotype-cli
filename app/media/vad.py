@@ -88,11 +88,20 @@ def segment_speech(
     min_speech_ms: int = 250,
     min_silence_ms: int = 100,
     pad_ms: int = 30,
+    merge_target_s: float = 25.0,
+    merge_max_s: float = 30.0,
+    merge_gap_ms: int = 500,
 ) -> List[VADSegment]:
     """对 int16 PCM 做静音切分。
 
     返回的 VADSegment 列表按时间顺序，samples 字段是切片后的 int16 数组（可直接送 ASR）。
     完全静音或空输入 → 返回空列表。
+
+    Args:
+        merge_target_s: 合并目标段长，达到后停止吸收下一段（默认 25s）
+        merge_max_s:    合并段硬上限，任何情况下都不会超过（默认 30s）；
+                        设为 0 或负数则禁用合并、保留细粒度 VAD 段
+        merge_gap_ms:   两段间静音 ≤ 此阈值时可合并（默认 500ms）
     """
     if samples_int16.size == 0:
         return []
@@ -165,6 +174,15 @@ def segment_speech(
         else:
             s["end"] = min(len(audio_f32), s["end"] + pad)
 
+    if merge_max_s > 0 and len(raw) > 1:
+        raw = _merge_short_segments(
+            raw,
+            sample_rate=sample_rate,
+            target_s=merge_target_s,
+            max_s=merge_max_s,
+            gap_ms=merge_gap_ms,
+        )
+
     return [
         VADSegment(
             start_s=round(s["start"] / sample_rate, 3),
@@ -173,3 +191,43 @@ def segment_speech(
         )
         for s in raw
     ]
+
+
+def _merge_short_segments(
+    segments: List[dict],
+    sample_rate: int,
+    target_s: float,
+    max_s: float,
+    gap_ms: int,
+) -> List[dict]:
+    """Greedy 合并相邻 VAD 段，降低 ASR 调用次数。
+
+    合并条件（同时满足）：
+      1) 两段间静音 ≤ gap_ms
+      2) 合并后总长 ≤ max_s
+      3) 当前段长度 < target_s（已达标的段不再继续吸收）
+
+    合并方式：以 [first.start, last.end] 作为新区间，自然包含中间静音；
+    这对 ASR 标点恢复反而有利（保留了说话节奏）。
+    """
+    max_samples = int(max_s * sample_rate)
+    target_samples = int(target_s * sample_rate)
+    gap_samples = int(gap_ms * sample_rate / 1000)
+
+    merged: List[dict] = [dict(segments[0])]
+    for nxt in segments[1:]:
+        cur = merged[-1]
+        gap = nxt["start"] - cur["end"]
+        cur_dur = cur["end"] - cur["start"]
+        candidate_dur = nxt["end"] - cur["start"]
+
+        if (
+            gap <= gap_samples
+            and candidate_dur <= max_samples
+            and cur_dur < target_samples
+        ):
+            cur["end"] = nxt["end"]
+        else:
+            merged.append(dict(nxt))
+
+    return merged
