@@ -379,7 +379,19 @@ class TranscriptionWorker:
         return path
 
     def _write_recent_wav(self, samples: np.ndarray) -> None:
-        """将最近一次录音保存为 recent.wav（供调试用），更新 last_segment_path。"""
+        """将最近一次录音保存为 recent.wav（供调试用），更新 last_segment_path。
+
+        仅用于热键场景的调试快照；文件转写一次几千段时关闭它（_skip_recent_wav）。
+        I/O 失败一律降级为 warning，绝不让 debug 产物拖死主转写流程。
+        """
+        if getattr(self, "_skip_recent_wav", False):
+            return
+        try:
+            self._write_recent_wav_inner(samples)
+        except Exception as exc:
+            logger.warning("recent.wav 写入失败（已忽略，不影响转录）: %s", exc)
+
+    def _write_recent_wav_inner(self, samples: np.ndarray) -> None:
         import wave
 
         sample_rate = self._audio_cfg["sample_rate"]
@@ -471,14 +483,20 @@ class TranscriptionWorker:
                 logger.error("处理转写结果时出错: %s", exc)
 
     def transcribe_samples(self, samples: np.ndarray) -> TranscriptionResult:
-        """同步转写一段 int16 PCM 样本，绕过录音/异步队列；供 CLI 文件转写场景使用。"""
+        """同步转写一段 int16 PCM 样本，绕过录音/异步队列；供 CLI 文件转写场景使用。
+
+        关闭 recent.wav 的调试写出：文件模式下一次会调用几千次，
+        高速反复 atomic-replace 同一个文件在 Windows 上必踩竞态。
+        """
         captured: list[TranscriptionResult] = []
         prev_callback = self.on_result
         self.on_result = captured.append
+        self._skip_recent_wav = True
         try:
             self._transcribe_once(samples)
         finally:
             self.on_result = prev_callback
+            self._skip_recent_wav = False
         if not captured:
             raise RuntimeError("transcribe_samples 未产生结果（后端未调用回调）")
         return captured[0]
