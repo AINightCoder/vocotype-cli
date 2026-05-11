@@ -32,7 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 class FunASRServer:
-    def __init__(self):
+    # 配 hotword 时切换到 ContextualParaformer 用的 ONNX 模型（带 model_eb 嵌入网络）。
+    # 注：modelscope 上没有 SeacoParaformer 的 -onnx repo，只有 -pytorch 版需要
+    # 装 funasr+torch 才能首次自动导出；故选用 Contextual ONNX 模型（SeACo 的父类，
+    # API 一致，效果略弱但功能完整，且零额外重依赖）。
+    _CONTEXTUAL_ASR_MODEL = (
+        "iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx"
+    )
+
+    def __init__(self, hotword: str = ""):
         self.asr_model = None
         self.vad_model = None
         self.punc_model = None
@@ -40,11 +48,18 @@ class FunASRServer:
         self.running = True
         self.transcription_count = 0  # 转录计数器
         self.total_audio_duration = 0.0  # 总音频时长
+        # 非空 hotword 触发上下文热词模式：换模型 + 换调用签名。
+        self._hotword = (hotword or "").strip()
+        self._asr_supports_hotword = False  # 模型加载后置位
 
         # 使用统一配置
         self.model_revision = MODEL_REVISION
+        # 启用热词时把 ASR 模型 ID 切到 contextual 版；VAD/PUNC 不动。
+        asr_name = (
+            self._CONTEXTUAL_ASR_MODEL if self._hotword else MODELS["asr"]["name"]
+        )
         self.model_names = {
-            "asr": MODELS["asr"]["name"],
+            "asr": asr_name,
             "vad": MODELS["vad"]["name"],
             "punc": MODELS["punc"]["name"],
         }
@@ -120,6 +135,27 @@ class FunASRServer:
             if "onnx" in model_name_lower:
                 from funasr_onnx.paraformer_bin import Paraformer
 
+                # 热词模式：用 ContextualParaformer（基础 Paraformer 的子类，多一个 model_eb 嵌入网络）。
+                model_cls = Paraformer
+                if self._hotword:
+                    try:
+                        from funasr_onnx.paraformer_bin import ContextualParaformer
+                        model_cls = ContextualParaformer
+                        self._asr_supports_hotword = True
+                        logger.info(
+                            "启用 SeACo 热词模式（ContextualParaformer ONNX 模型）；"
+                            "首次会下载额外的 model_eb.onnx 嵌入网络（~70MB），用于热词偏置"
+                        )
+                    except ImportError as exc:
+                        logger.error(
+                            "funasr_onnx 未提供 ContextualParaformer，热词功能不可用，"
+                            "fallback 到基础 Paraformer: %s",
+                            exc,
+                        )
+                        self._hotword = ""  # 阻止后续 transcribe_audio 误传 hotwords
+                        # 同步把模型名改回默认基础模型，避免空载 contextual 配置
+                        self.model_names["asr"] = MODELS["asr"]["name"]
+
                 logger.info("开始加载ASR ONNX模型: %s", self.model_names["asr"])
                 try:
                     model_dir = get_model_cache_path(
@@ -150,14 +186,18 @@ class FunASRServer:
                 # 性能优化参数
                 num_threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
 
-                self.asr_model = Paraformer(
+                self.asr_model = model_cls(
                     str(model_dir),
                     batch_size=1,
                     device_id=device_id,
                     quantize=use_quantize,
                     intra_op_num_threads=num_threads,  # 线程并行加速
                 )
-                logger.info("ASR ONNX模型加载完成")
+                logger.info(
+                    "ASR ONNX模型加载完成 (class=%s, hotword=%s)",
+                    model_cls.__name__,
+                    "on" if self._asr_supports_hotword else "off",
+                )
                 return True
             else:
                 logger.error("仅支持 ONNX 模型加载，当前模型名称: %s", self.model_names["asr"]) 
@@ -428,8 +468,13 @@ class FunASRServer:
                     hotword=default_options["hotword"],
                     cache={},
                 )
+            elif self._asr_supports_hotword:
+                # ContextualParaformer：__call__(wav, hotwords: str)，必填位置参数。
+                # 空字符串不会触发 corpus，但单次调用必传 — 用 options 里的 hotword 字符串。
+                hotwords_str = default_options.get("hotword", "") or ""
+                asr_result = self.asr_model(audio_path, hotwords_str)
             else:
-                # ONNX 模型直接调用（funasr_onnx.Paraformer）
+                # ONNX 基础模型直接调用（funasr_onnx.Paraformer）
                 asr_result = self.asr_model([audio_path])
 
             # 提取识别文本（兼容 PyTorch 和 ONNX 两种格式）

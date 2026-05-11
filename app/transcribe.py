@@ -70,7 +70,10 @@ class TranscriptionWorker:
         else:
             from app.funasr_server import FunASRServer
             self._volcengine_client = None
-            self.fun_server = FunASRServer()
+            # 把 asr.hotword 透传给 FunASRServer 构造：非空时它会切到 ContextualParaformer
+            # 加载路径；空时维持基础 Paraformer，与改动前行为一致。
+            funasr_hotword = (self.config.get("asr") or {}).get("hotword", "") or ""
+            self.fun_server = FunASRServer(hotword=funasr_hotword)
             init_result = self.fun_server.initialize()
             if not init_result.get("success"):
                 raise RuntimeError(f"FunASR 初始化失败: {init_result}")

@@ -242,23 +242,30 @@ python main.py --config config.json
 
 > **注意**：使用 Volcengine 后端时，录音数据会发送到火山引擎服务器进行识别，不再完全离线。如对隐私有严格要求，请继续使用默认的本地 FunASR 后端。
 
-### 上下文热词（Volcengine 专有）
+### 上下文热词（两个后端都支持）
 
-把容易识别错的人名、专有名词加进 `asr.hotword`，火山引擎会在解码时给这些词加权，**比识别后做字符串替换更前置、更精准**。多个词用空格分隔：
+把容易识别错的人名、专有名词加进 `asr.hotword`，ASR 引擎会在解码时给这些词加权，**比识别后做字符串替换更前置、更精准**。多个词用空格分隔：
 
 ```json
 {
-  "backend": "volcengine",
-  "volcengine": { "app_key": "...", "access_key": "..." },
   "asr": {
     "hotword": "Vocotype 火山引擎 Kubernetes 提交"
   }
 }
 ```
 
-底层经协议字段 `request.corpus.context.hotwords` 传给 SAUC 流式接口，热词数量与字符长度受云端限制（一般 ≤ 100 词、单词 ≤ 20 字，详见火山官方文档）。
+**两条后端的接通方式不同**：
 
-> **注意**：`asr.hotword` 仅对 **Volcengine 后端** 生效。当前 FunASR 后端用的是 funasr-onnx 的基础 Paraformer（不带上下文偏置能力），该字段会被静默忽略——FunASR 用户请改用 [自定义替换词典](#-自定义替换词典) 做识别后纠正。
+| 后端 | 实现 | 首次启用代价 |
+|---|---|---|
+| **Volcengine** | 协议字段 `request.corpus.context.hotwords` 传给 SAUC 流式接口；热词数量/长度受云端限制（一般 ≤ 100 词、单词 ≤ 20 字） | 无 |
+| **FunASR (本地)** | 自动切换到 `iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx`（ContextualParaformer ONNX 模型，基础版的"带热词外挂"姊妹版） | 首次会**额外**下载 `model_eb.onnx` 嵌入网络（量化版 ~70MB），写入 modelscope 缓存目录 |
+
+> **关于 SeACo**：论文最新的 SeACoParaformer 比 ContextualParaformer 效果更好，但 modelscope 上**没有发布 -onnx 后缀的 SeACo repo**（只有 -pytorch 需要装 funasr+torch 才能首次自动导出 ONNX，~1.2GB 重依赖）。本项目保持 ONNX-only 路线，选用 ContextualParaformer。如果你坚持要 SeACo，可手动跑 `funasr_onnx.SeacoParaformer(model_dir)` 让 funasr 自动导出，然后把生成的 `model.onnx` + `model_eb.onnx` 放进 cache 目录、修改 `app/funasr_server.py:_CONTEXTUAL_ASR_MODEL` 指向。
+
+> **空字符串 = 关闭热词模式**：`hotword: ""` 或不写该字段时，两个后端都退回到不带热词偏置的原始模型，性能与改动前一致。
+
+热词搞不定的"死局错误"（每次都识别错的同一个词），用 [自定义替换词典](#-自定义替换词典) 做识别后纠正——两者互补、不冲突。
 
 ## 📝 自定义替换词典
 
