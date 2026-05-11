@@ -186,6 +186,23 @@ class FunASRServer:
                 # 性能优化参数
                 num_threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
 
+                # ContextualParaformer 文件名不一致补丁：
+                # modelscope 上 contextual repo 只发布 model_quant.onnx + model_eb.onnx
+                # （bb 量化、eb 非量化），但 funasr_onnx 0.4.1 在 quantize=True 时硬要找
+                # model_eb_quant.onnx。两种模式都缺一个文件，会触发 funasr+torch 自动导出
+                # 路径（项目不装这俩，必失败）。补丁：建硬链接让命名对上。
+                if self._asr_supports_hotword and use_quantize:
+                    eb_src = os.path.join(model_dir, "model_eb.onnx")
+                    eb_dst = os.path.join(model_dir, "model_eb_quant.onnx")
+                    if os.path.exists(eb_src) and not os.path.exists(eb_dst):
+                        try:
+                            os.link(eb_src, eb_dst)
+                            logger.info("已建硬链接 model_eb.onnx → model_eb_quant.onnx 兼容 funasr_onnx 量化模式")
+                        except OSError as exc:
+                            import shutil
+                            shutil.copy2(eb_src, eb_dst)
+                            logger.info("硬链失败 (%s)，已复制 model_eb.onnx → model_eb_quant.onnx", exc)
+
                 self.asr_model = model_cls(
                     str(model_dir),
                     batch_size=1,
@@ -193,6 +210,11 @@ class FunASRServer:
                     quantize=use_quantize,
                     intra_op_num_threads=num_threads,  # 线程并行加速
                 )
+                # funasr_onnx 0.4.1 库 bug：ContextualParaformer.__init__ 漏了
+                # self.language 赋值（基础 Paraformer 在 paraformer_bin.py:93-96 设了），
+                # 但 __call__ 在 line 365 读它，必抛 AttributeError。手动补上。
+                if self._asr_supports_hotword and not hasattr(self.asr_model, "language"):
+                    self.asr_model.language = None
                 logger.info(
                     "ASR ONNX模型加载完成 (class=%s, hotword=%s)",
                     model_cls.__name__,
