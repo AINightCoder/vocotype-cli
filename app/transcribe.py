@@ -78,6 +78,10 @@ class TranscriptionWorker:
         self._stop_requested = threading.Event()
         self._capture_thread: Optional[threading.Thread] = None
         self._state_lock = threading.RLock()
+        # 后端访问锁：F2 录音的异步队列线程与 F3 文件转写的主线程可能并发
+        # 调用 fun_server.transcribe_audio / volcengine_client.transcribe；
+        # 它们都是单实例非线程安全，加锁串行化避免竞态/状态污染。
+        self._backend_lock = threading.RLock()
         self._audio_cfg = audio_cfg
         self._buffer: list[np.ndarray] = []
         self._buffer_lock = threading.Lock()
@@ -410,10 +414,11 @@ class TranscriptionWorker:
         self.last_segment_path = recent_path
 
     def _transcribe_once(self, samples: np.ndarray) -> None:
-        if self._backend == "volcengine":
-            self._transcribe_once_volcengine(samples)
-        else:
-            self._transcribe_once_funasr(samples)
+        with self._backend_lock:
+            if self._backend == "volcengine":
+                self._transcribe_once_volcengine(samples)
+            else:
+                self._transcribe_once_funasr(samples)
 
     def _transcribe_once_funasr(self, samples: np.ndarray) -> None:
         """使用本地 FunASR 进行转录。"""
