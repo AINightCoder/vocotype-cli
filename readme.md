@@ -259,7 +259,7 @@ python main.py --config config.json
 | 后端 | 实现 | 首次启用代价 |
 |---|---|---|
 | **Volcengine** | 协议字段 `request.corpus.context.hotwords` 传给 SAUC 流式接口；热词数量/长度受云端限制（一般 ≤ 100 词、单词 ≤ 20 字） | 无 |
-| **FunASR (本地)** | 自动切换到 `iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx`（ContextualParaformer ONNX 模型，基础版的"带热词外挂"姊妹版） | 首次会**额外**下载 `model_eb.onnx` 嵌入网络（量化版 ~70MB），写入 modelscope 缓存目录 |
+| **FunASR (本地)** | 自动切换到 `iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx`（ContextualParaformer ONNX 模型，基础版的"带热词外挂"姊妹版） | 首次会下载整个 contextual repo：`model_quant.onnx` (~832MB) + `model_eb.onnx` (~24MB)，写入 modelscope 缓存目录。**与原 paraformer-large repo 是不同的 repo**，所以会重复占用主模型空间 |
 
 > **关于 SeACo**：论文最新的 SeACoParaformer 比 ContextualParaformer 效果更好，但 modelscope 上**没有发布 -onnx 后缀的 SeACo repo**（只有 -pytorch 需要装 funasr+torch 才能首次自动导出 ONNX，~1.2GB 重依赖）。本项目保持 ONNX-only 路线，选用 ContextualParaformer。如果你坚持要 SeACo，可手动跑 `funasr_onnx.SeacoParaformer(model_dir)` 让 funasr 自动导出，然后把生成的 `model.onnx` + `model_eb.onnx` 放进 cache 目录、修改 `app/funasr_server.py:_CONTEXTUAL_ASR_MODEL` 指向。
 
@@ -298,6 +298,44 @@ python main.py --config config.json
 - 字面替换大小写敏感且会子串匹配；需要词边界请用正则（`\bAI\b`）
 - 单条规则编译失败（如正则有误）会自动降级为字面替换并写 warning，不影响其它规则
 - `hotword` 与 `replacements` 互补：前者识别前给引擎建议，后者识别后做硬替换；建议两者一起用
+
+## 🧪 开发与测试
+
+`test/` 目录附带 23 个单元/集成测试 + 1 个端到端脚本，覆盖热词与替换词典两套特性。
+
+### L1 + L2 自动化测试（mock，秒级跑完）
+
+```bash
+.venv/Scripts/python.exe -m unittest discover -s test -v
+# Ran 23 tests in 0.04s — OK
+```
+
+覆盖：替换词典规则编译 / 错误降级 / 字面正则边界、FunASR `hotword` 触发模型 ID 切换、`transcribe_audio` 调用签名分发到 contextual / 基础两条路径、Volcengine WebSocket payload 注入 `corpus.context.hotwords`、`_dispatch_result` 把 `text` 经替换且 `raw_text` 保留 ASR 原始。
+
+### L3 真实端到端（需联网 + 测试音频）
+
+```bash
+# 全部场景
+.venv/Scripts/python.exe test/test_e2e_real_audio.py
+
+# 只跑替换词典（不下载新模型，最快）
+.venv/Scripts/python.exe test/test_e2e_real_audio.py --scenarios replace
+
+# 跑 FunASR 热词场景（首次会下载 ContextualParaformer ~860MB）
+.venv/Scripts/python.exe test/test_e2e_real_audio.py --scenarios funasr
+
+# Volcengine 场景需 env 变量
+VOLC_APP_KEY=xxx VOLC_ACCESS_KEY=yyy .venv/Scripts/python.exe test/test_e2e_real_audio.py --scenarios volc
+```
+
+详见 `test/README.md`。
+
+### 维护者注意：funasr_onnx 0.4.1 workaround
+
+`app/funasr_server.py` 内置两个 ContextualParaformer 加载补丁，未来升级 funasr_onnx 时可重新检查是否仍需要：
+
+1. **文件命名补齐**：modelscope contextual repo 发布的是 `model_quant.onnx` + `model_eb.onnx`（量化主模型 + 非量化嵌入），但 funasr_onnx 在 `quantize=True` 时硬要 `model_eb_quant.onnx`。代码在加载前用 `os.link` 建硬链接补齐
+2. **language 属性补齐**：`ContextualParaformer.__init__` 漏给 `self.language` 赋值（基础 `Paraformer.__init__` 在 `paraformer_bin.py:93-96` 设了），代码 instantiate 后手动 `self.asr_model.language = None`
 
 ## 常见问题 (FAQ)
 
