@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 import time
 
@@ -32,11 +33,33 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--save-dataset", action="store_true", help="Persist audio/text pairs")
     parser.add_argument("--dataset-dir", default="dataset", help="Dataset output directory")
+
+    subparsers = parser.add_subparsers(dest="command")
+    sub_tx = subparsers.add_parser(
+        "transcribe",
+        help="Transcribe an audio/video file to .txt (one-shot, no hotkeys)",
+    )
+    sub_tx.add_argument("input", help="Path to audio or video file")
+    sub_tx.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output .txt path (default: same name as input, .txt extension)",
+    )
+    sub_tx.add_argument(
+        "--config",
+        default=argparse.SUPPRESS,
+        help="Path to config JSON (overrides top-level --config)",
+    )
+
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if getattr(args, "command", None) == "transcribe":
+        from app.cli.transcribe_cmd import run
+        sys.exit(run(args))
+
     config = load_config(args.config)
     
     # 配置日志系统（统一配置）
@@ -95,7 +118,6 @@ def main() -> None:
             logger.debug("清理热键时出错: %s", exc)
         
         logger.info("所有资源已清理，正常退出")
-        import sys
         sys.exit(0)
 
 

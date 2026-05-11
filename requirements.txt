@@ -13,6 +13,14 @@ websockets>=12.0
 # 选其一或都装：用于 AutoModel 拉取/缓存模型
 modelscope==1.30.0
 
+# 音视频文件转写子命令（`python main.py transcribe ...`）需要：
+#   - imageio-ffmpeg: 自带预编译 ffmpeg 二进制（首次安装下载 ~80MB），用于
+#     从 mp4/mkv/webm/mov + mp3/aac/m4a 抽 16 kHz 单声道音轨。
+#   - onnxruntime:    跑 silero-vad ONNX 模型做静音切句；模型文件已随仓库分发
+#     （app/media/silero_vad.onnx，~2 MB，Apache-2.0）。
+imageio-ffmpeg==0.6.0
+onnxruntime==1.26.0
+
 # 说明：
 # - 切换为 ONNX 路线（onnxruntime）；如需 GPU/PyTorch，请安装 torch(+cu) 与 torchaudio。
 

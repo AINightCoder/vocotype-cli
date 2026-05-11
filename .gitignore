@@ -14,3 +14,7 @@ todo.md
 /models
 /scripts
 
+# Local work directories (not source code)
+.poc/
+.omc/
+

@@ -113,6 +113,23 @@ python main.py --save-dataset
 ```
 
 > **模型下载**：首次运行时，程序会自动下载约 500MB 的模型文件，请确保网络连接稳定。
+> 视频格式（mp4/mkv/webm/mov）依赖 `imageio-ffmpeg` 自带的预编译 ffmpeg 二进制，pip 安装时会自动下载（~80MB），用户无需自行配置。
+
+## 📂 音视频文件转写（CLI 子命令）
+
+把本地音视频文件一键转写为同名 `.txt`，复用本地 FunASR 或云端 Volcengine 后端，不启动热键监听：
+
+```bash
+python main.py transcribe path/to/audio.mp3                       # 默认生成 audio.txt
+python main.py transcribe lecture.mp4 -o /tmp/out.txt              # 自定义输出路径
+python main.py transcribe podcast.m4a --config volcengine.json     # 走云端后端
+```
+
+**支持的格式**：
+- 音频：`wav` / `mp3` / `flac` / `aac` / `m4a` / `ogg`
+- 视频：`mp4` / `mkv` / `webm` / `mov`（自动 ffmpeg 抽音轨）
+
+**长文件**：内置 silero-vad ONNX 模型做静音切句，自动拆分为 5-15 秒句子级片段逐段识别，避免长音频 OOM；典型 144s 视频 < 2 秒跑完（约 80x 实时）。
 
 ## 🌐 Volcengine 火山引擎 BigASR 流式识别后端（可选）
 
