@@ -144,11 +144,23 @@ vocotype                                      # 仍然进热键模式
 
 #### Mode A —— Send To 右键菜单（无常驻、零内存）
 
-```powershell
-vocotype install-send-to        # 一次性安装；可用 uninstall-send-to 卸载
+**默认零配置**：首次启动 `vocotype` daemon 时会自动注册 Send To 快捷方式，控制台首行会打印：
+
+```
+[首次启动] 已自动注册到 Send To 菜单: Vocotype.lnk
+           不需要的话运行 `vocotype uninstall-send-to` 永久关闭
 ```
 
-执行后，**资源管理器内任意音视频文件 → 右键 → 发送到 → Vocotype** 即触发转写，输出 `.txt` 落在源文件旁。无后台进程、不占内存；缺点是每次都要 ~4 秒重新加载 FunASR 模型，适合长文件场景。
+之后**资源管理器内任意音视频文件 → 右键 → 发送到 → Vocotype** 即触发转写，输出 `.txt` 落在源文件旁。无后台进程、不占内存；每次重新加载 FunASR 模型 ~4 秒，适合长文件场景。
+
+如果想跳过 daemon 直接装：
+
+```powershell
+vocotype install-send-to        # 手动安装（也撤销之前的 opt-out）
+vocotype uninstall-send-to      # 移除快捷方式 + 写永久 opt-out 标记
+```
+
+opt-out 标记位于 `%APPDATA%\VocoType\.no_auto_sendto`，存在时 daemon 不再自动安装；重跑 `install-send-to` 会删掉它恢复自动行为。
 
 #### Mode B —— 常驻 daemon + F3 文件选择器
 
