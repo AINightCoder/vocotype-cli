@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -103,9 +104,14 @@ def ensure_logging_dir(config: Dict[str, Any]) -> str:
     if os.path.isabs(log_dir):
         pass
     else:
-        # 相对路径：基于项目根目录（向上两级到达项目根目录）
-        # app/config.py -> app/ -> 项目根目录
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 相对路径：分两种情况
+        if getattr(sys, "frozen", False):
+            # PyInstaller 冻结模式：用 exe 同目录作为根
+            # （_MEIxxx 解压目录只读、退出时清空，写日志会丢）
+            project_root = os.path.dirname(sys.executable)
+        else:
+            # 开发模式：app/config.py -> app/ -> 项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         log_dir = os.path.join(project_root, log_dir)
     
     os.makedirs(log_dir, exist_ok=True)

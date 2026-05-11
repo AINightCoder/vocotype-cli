@@ -55,6 +55,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    # Windows cp1252/cp936 控制台无法直接打印中文；统一把 stdio 切到 UTF-8，
+    # PyInstaller 冻结模式下 PYTHONIOENCODING env var 不被早期 Python 初始化读取，
+    # 必须在代码里强制 reconfigure 才能保险。errors="replace" 兜底极端字符。
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, Exception):
+            pass
+
     args = parse_args()
     if getattr(args, "command", None) == "transcribe":
         from app.cli.transcribe_cmd import run

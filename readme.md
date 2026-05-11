@@ -115,6 +115,28 @@ python main.py --save-dataset
 
 > **模型下载**：首次运行时，程序会自动下载约 500MB 的 FunASR 模型文件，请确保网络连接稳定。
 
+### 3. 打包为单文件 `vocotype.exe`（Windows，可选）
+
+不想每次都 `cd` 到项目目录、激活虚拟环境？把整个 CLI 冻结成一个 `.exe` 放到 PATH 上，全局可用：
+
+```bash
+# 在已激活的虚拟环境内
+uv pip install pyinstaller
+pyinstaller vocotype.spec
+
+# 产物：dist/vocotype.exe（约 188 MB，单文件，包含 ffmpeg + 所有 Python 依赖）
+```
+
+把 `dist/vocotype.exe` 拷到 `%USERPROFILE%\.local\bin\` 或任意 PATH 上的目录，重启终端：
+
+```powershell
+vocotype --help
+vocotype transcribe D:\videos\lecture.mp4    # 任意目录直接调用
+vocotype                                      # 仍然进热键模式
+```
+
+注意：FunASR 模型（~500 MB）不打进 exe，首次运行仍会下载到 `%USERPROFILE%\.cache\modelscope\`；日志写入 `<exe同目录>\logs\`。
+
 ## 📂 音视频文件转写（CLI 子命令）
 
 把本地音视频文件一键转写为同名 `.txt`，复用本地 FunASR 或云端 Volcengine 后端，不启动热键监听：
