@@ -470,6 +470,19 @@ class TranscriptionWorker:
             except Exception as exc:  # noqa: BLE001
                 logger.error("处理转写结果时出错: %s", exc)
 
+    def transcribe_samples(self, samples: np.ndarray) -> TranscriptionResult:
+        """同步转写一段 int16 PCM 样本，绕过录音/异步队列；供 CLI 文件转写场景使用。"""
+        captured: list[TranscriptionResult] = []
+        prev_callback = self.on_result
+        self.on_result = captured.append
+        try:
+            self._transcribe_once(samples)
+        finally:
+            self.on_result = prev_callback
+        if not captured:
+            raise RuntimeError("transcribe_samples 未产生结果（后端未调用回调）")
+        return captured[0]
+
     @property
     def is_running(self) -> bool:
         return self._running.is_set()
