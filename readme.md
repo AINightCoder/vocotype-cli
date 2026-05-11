@@ -330,6 +330,24 @@ VOLC_APP_KEY=xxx VOLC_ACCESS_KEY=yyy .venv/Scripts/python.exe test/test_e2e_real
 
 详见 `test/README.md`。
 
+### 优化 ContextualParaformer 模型大小
+
+modelscope 上 `iic/speech_paraformer-large-contextual_..._-onnx` 发布的 `model_quant.onnx` 虽然文件名带 "quant" 但**权重 100% 是 FP32**（871MB），实际未量化。本项目内置 dynamic INT8 量化工具：
+
+```bash
+# 一次性量化（约 17 秒，结果覆盖原文件，原文件备份到 model_quant.fp32.bak）
+.venv/Scripts/python.exe tools/quantize_contextual_model.py
+
+# 跑测试音频对比量化前后输出一致性
+.venv/Scripts/python.exe tools/verify_quantized_model.py
+```
+
+预期：**871MB → ~222MB（4× 压缩，节省 ~650MB）**。在 res/test/test1.mp3 上实测量化前后输出**完全一致**（"心，你升级了，你的英雄也将迎来新的成长机会。"）。
+
+- 备份文件 `model_quant.fp32.bak` 留着可一键回滚：`mv ...fp32.bak ...onnx`
+- 确认稳定后可手动删除备份释放 871MB
+- 仅对 contextual 模型有效；基础 paraformer-large (228MB) 不需要也不建议二次量化
+
 ### 维护者注意：funasr_onnx 0.4.1 workaround
 
 `app/funasr_server.py` 内置两个 ContextualParaformer 加载补丁，未来升级 funasr_onnx 时可重新检查是否仍需要：
