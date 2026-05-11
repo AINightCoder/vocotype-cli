@@ -17,6 +17,7 @@ import numpy as np
 
 from .audio_capture import AudioCapture
 from .config import ensure_logging_dir, load_config
+from .postprocess import apply_replacements, compile_replacements
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ class TranscriptionWorker:
         self.config = load_config(config_path)
         self.on_result = on_result
         self.log_dir = ensure_logging_dir(self.config)
+        # 替换规则在启动时编译一次，避免每次结果都重编正则。
+        self._replacements = compile_replacements(self.config.get("replacements"))
         self.last_segment_path: Optional[Path] = None
         self._session_id_counter = itertools.count(1)
         self._current_session_id: Optional[int] = None
@@ -473,8 +476,12 @@ class TranscriptionWorker:
                 error=asr_result.get("error", "unknown"),
             )
         else:
+            # raw_text 保留 ASR 后端原始输出（dataset_recorder 落盘用）；
+            # text 字段应用用户自定义替换词典，作为下游 type_text / sidecar 的最终文本。
+            asr_text = asr_result.get("text", "")
+            final_text = apply_replacements(asr_text, self._replacements)
             result = TranscriptionResult(
-                text=asr_result.get("text", ""),
+                text=final_text,
                 raw_text=asr_result.get("raw_text", ""),
                 duration=asr_result.get("duration", 0.0),
                 inference_latency=inference_latency,

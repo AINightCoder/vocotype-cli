@@ -61,6 +61,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "method": "auto",
         "append_newline": False,
     },
+    # 后处理替换词典。每条规则形如 {"from": str, "to": str, "regex": bool?}。
+    # 详见 app/postprocess.py 顶部 docstring。默认空 = 不替换、零开销。
+    "replacements": [],
     "logging": {"dir": "logs", "level": "INFO"},
 }
 

@@ -242,6 +242,38 @@ python main.py --config config.json
 
 > **注意**：使用 Volcengine 后端时，录音数据会发送到火山引擎服务器进行识别，不再完全离线。如对隐私有严格要求，请继续使用默认的本地 FunASR 后端。
 
+## 📝 自定义替换词典
+
+针对 ASR "死局错误"（同一个词每次都识别错、靠 hotword 也救不回来），在 `config.json` 加 `replacements` 数组即可逐条字面或正则替换识别结果。**对 F2 麦克风录入、F3 文件转写、`transcribe` 子命令、右键发送到菜单全部生效**。
+
+```json
+{
+  "replacements": [
+    { "from": "the message", "to": "提交的 message" },
+    { "from": "k8s", "to": "Kubernetes" },
+    { "from": "/\\b(ai|a i)\\b/i", "to": "人工智能", "regex": true },
+    { "from": "/(\\d+)\\s*个鸡蛋/", "to": "\\1 个鸡蛋", "regex": true }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `from`  | ✅ | 要匹配的字符串。`regex=true` 时作为 Python `re` 模式 |
+| `to`    | ✅ | 替换为的文本。正则模式下可用 `\1` 引用捕获组 |
+| `regex` |    | 是否启用正则，默认 `false`（字面替换） |
+
+正则可用 `/pattern/flags` 形式追加 flags：`i` 忽略大小写、`m` 多行、`s` dotall。
+
+**几个要点**
+
+- 规则按数组顺序逐条 apply，把更具体的规则写在前面、宽泛的写在后面
+- 字面替换大小写敏感且会子串匹配；需要词边界请用正则（`\bAI\b`）
+- 单条规则编译失败（如正则有误）会自动降级为字面替换并写 warning，不影响其它规则
+- `hotword` 与 `replacements` 互补：前者识别前给引擎建议，后者识别后做硬替换；建议两者一起用
+
 ## 常见问题 (FAQ)
 
 **Q: 我的数据安全吗？**
