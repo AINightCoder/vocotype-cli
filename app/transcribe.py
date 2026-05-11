@@ -454,6 +454,11 @@ class TranscriptionWorker:
             for k in ("enable_punc", "enable_itn")
             if k in volcengine_cfg
         }
+        # 上下文热词从 asr.hotword 透传（仅 volcengine 后端真正使用；FunASR ONNX 路径忽略）。
+        asr_cfg = self.config.get("asr") or {}
+        hotword = asr_cfg.get("hotword", "")
+        if isinstance(hotword, str) and hotword.strip():
+            transcribe_options["hotword"] = hotword
         start = time.time()
         asr_result = self._volcengine_client.transcribe(
             samples,

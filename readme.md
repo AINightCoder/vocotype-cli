@@ -242,6 +242,24 @@ python main.py --config config.json
 
 > **注意**：使用 Volcengine 后端时，录音数据会发送到火山引擎服务器进行识别，不再完全离线。如对隐私有严格要求，请继续使用默认的本地 FunASR 后端。
 
+### 上下文热词（Volcengine 专有）
+
+把容易识别错的人名、专有名词加进 `asr.hotword`，火山引擎会在解码时给这些词加权，**比识别后做字符串替换更前置、更精准**。多个词用空格分隔：
+
+```json
+{
+  "backend": "volcengine",
+  "volcengine": { "app_key": "...", "access_key": "..." },
+  "asr": {
+    "hotword": "Vocotype 火山引擎 Kubernetes 提交"
+  }
+}
+```
+
+底层经协议字段 `request.corpus.context.hotwords` 传给 SAUC 流式接口，热词数量与字符长度受云端限制（一般 ≤ 100 词、单词 ≤ 20 字，详见火山官方文档）。
+
+> **注意**：`asr.hotword` 仅对 **Volcengine 后端** 生效。当前 FunASR 后端用的是 funasr-onnx 的基础 Paraformer（不带上下文偏置能力），该字段会被静默忽略——FunASR 用户请改用 [自定义替换词典](#-自定义替换词典) 做识别后纠正。
+
 ## 📝 自定义替换词典
 
 针对 ASR "死局错误"（同一个词每次都识别错、靠 hotword 也救不回来），在 `config.json` 加 `replacements` 数组即可逐条字面或正则替换识别结果。**对 F2 麦克风录入、F3 文件转写、`transcribe` 子命令、右键发送到菜单全部生效**。

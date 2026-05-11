@@ -238,7 +238,7 @@ class VolcengineASRClient:
         audio_duration_s = 0.0
         start_time = time.time()
 
-        init_payload = {
+        init_payload: Dict[str, Any] = {
             "audio": {
                 "format": "pcm",
                 "codec": "raw",
@@ -251,6 +251,24 @@ class VolcengineASRClient:
                 "enable_itn": options.get("enable_itn", self._enable_itn),
             },
         }
+
+        # 上下文热词（context biasing）：仅在用户配置了 hotword 时注入 corpus 字段，
+        # 避免影响默认 payload，保持零回归。协议路径 request.corpus.context.hotwords，
+        # 每个 item 形如 {"word": "..."}，参考 volcengine-audio SDK 的 Pydantic 模型。
+        hotword_raw = options.get("hotword", "")
+        if isinstance(hotword_raw, str) and hotword_raw.strip():
+            hotwords = [{"word": w} for w in hotword_raw.split() if w]
+            if hotwords:
+                init_payload["request"]["corpus"] = {
+                    "context": {
+                        "hotwords": hotwords,
+                        "context_type": "dialog_ctx",
+                    }
+                }
+                logger.debug(
+                    "Volcengine ASR 注入 %d 个上下文热词: %s",
+                    len(hotwords), [h["word"] for h in hotwords],
+                )
 
         # bytes per chunk (int16 = 2 bytes/sample)
         chunk_samples = sample_rate * self._chunk_ms // 1000
