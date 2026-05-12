@@ -131,9 +131,12 @@ uv pip install pyinstaller
 pyinstaller vocotype.spec
 
 # 产物：dist/vocotype.exe
-#   - 不带模型：约 188 MB（首次跑会从 modelscope 拉到 %USERPROFILE%\.cache\modelscope\）
-#   - 带模型  ：约 960 MB（含 4 个 ONNX 模型，离线分发零依赖）
+#   - 不带模型：约 189 MB（首次跑会从 modelscope 拉到 %USERPROFILE%\.cache\modelscope\）
+#   - 带模型  ：约 835 MB（含 4 个 ONNX 模型，离线分发零依赖，实测）
 ```
+
+> 离线验证：跑 `dist/vocotype.exe transcribe res/test/test1.mp3` 日志会显示
+> `使用项目内打包模型: ...\_MEIxxxxx\models\iic\...`，说明模型从 exe 解压目录加载，不查 modelscope cache 也不联网。
 
 把 `dist/vocotype.exe` 拷到 `%USERPROFILE%\.local\bin\` 或任意 PATH 上的目录，重启终端：
 

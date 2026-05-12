@@ -36,7 +36,8 @@ datas += [
 # ONNX 模型（可选）：如果开发者跑过 tools/sync_models_to_project.py 把模型复制到
 # 项目 models/，这里就把整个目录连同子目录结构一起打包；运行时 _MEIPASS/models/...
 # 与 app/download_models.py:_project_models_dir() 约定一致。
-_models_root = os.path.join(os.path.dirname(os.path.abspath(SPECPATH)), "models")
+# SPECPATH 在 PyInstaller 上下文里就是 spec 所在目录（项目根），不需要再 dirname
+_models_root = os.path.abspath(os.path.join(SPECPATH, "models"))
 if os.path.isdir(_models_root):
     print(f"[vocotype.spec] 检测到项目 models/，打包模型文件...")
     for src_file in glob.glob(os.path.join(_models_root, "**", "*"), recursive=True):
